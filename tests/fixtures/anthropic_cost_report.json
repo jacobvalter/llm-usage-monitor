@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "cost_usd": "0.01875",
+      "model": "claude-sonnet-4-6",
+      "workspace_id": "wrkspc_01abc",
+      "snapshot_time": "2025-04-16T00:00:00Z"
+    },
+    {
+      "cost_usd": "0.00322",
+      "model": "claude-haiku-4-5-20251001",
+      "workspace_id": "wrkspc_01abc",
+      "snapshot_time": "2025-04-16T00:00:00Z"
+    }
+  ]
+}
