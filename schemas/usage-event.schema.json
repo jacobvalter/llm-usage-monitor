@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llm-usage-monitor/schemas/usage-event.schema.json",
+  "title": "UsageEvent",
+  "description": "A single time-bucketed usage record from an LLM provider's admin API.",
+  "type": "object",
+  "required": [
+    "id",
+    "provider",
+    "source",
+    "bucketStart",
+    "bucketWidth",
+    "inputTokens",
+    "outputTokens",
+    "requestCount",
+    "fetchedAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier / CloudKit record name."
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["anthropic", "openai"],
+      "description": "LLM provider."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "admin_usage_api",
+        "claude_code_jsonl",
+        "codex_jsonl",
+        "otel",
+        "chatgpt_wham"
+      ],
+      "description": "How this record was obtained. v0.1 uses admin_usage_api only."
+    },
+    "bucketStart": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 start of the time bucket."
+    },
+    "bucketWidth": {
+      "type": "string",
+      "enum": ["1m", "1h", "1d"],
+      "description": "Width of the time bucket."
+    },
+    "model": {
+      "type": ["string", "null"],
+      "description": "Model identifier, e.g. claude-sonnet-4-6, gpt-5-codex."
+    },
+    "workspaceId": {
+      "type": ["string", "null"],
+      "description": "Anthropic workspace ID for grouping."
+    },
+    "apiKeyId": {
+      "type": ["string", "null"],
+      "description": "API key identifier for grouping."
+    },
+    "inputTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outputTokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cacheReadTokens": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Anthropic cache-read tokens. 0 for OpenAI."
+    },
+    "cacheCreationTokens": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Anthropic cache-creation tokens. 0 for OpenAI."
+    },
+    "reasoningTokens": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "OpenAI reasoning tokens. 0 for Anthropic."
+    },
+    "requestCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "costUSD": {
+      "type": ["number", "null"],
+      "description": "Cost in USD from the provider's cost endpoint."
+    },
+    "fetchedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this record was fetched from the API."
+    }
+  },
+  "additionalProperties": false
+}

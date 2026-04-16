@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "input_tokens": 12500,
+      "output_tokens": 3200,
+      "cache_read_input_tokens": 8000,
+      "cache_creation_input_tokens": 1500,
+      "model": "claude-sonnet-4-6",
+      "workspace_id": "wrkspc_01abc",
+      "api_key_id": "sk-ant-api03-abc",
+      "snapshot_time": "2025-04-16T12:00:00Z",
+      "request_count": 15
+    },
+    {
+      "input_tokens": 4300,
+      "output_tokens": 1100,
+      "cache_read_input_tokens": 2000,
+      "cache_creation_input_tokens": 500,
+      "model": "claude-haiku-4-5-20251001",
+      "workspace_id": "wrkspc_01abc",
+      "api_key_id": "sk-ant-api03-def",
+      "snapshot_time": "2025-04-16T12:01:00Z",
+      "request_count": 8
+    }
+  ]
+}

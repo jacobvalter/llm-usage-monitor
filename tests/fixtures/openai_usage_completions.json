@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "input_tokens": 9500,
+      "output_tokens": 4200,
+      "input_cached_tokens": 3000,
+      "num_model_requests": 12,
+      "project_id": "proj_abc123",
+      "user_id": "user_xyz",
+      "api_key_id": "sk-proj-abc",
+      "model": "gpt-4o",
+      "start_time": 1744804800,
+      "end_time": 1744804860
+    },
+    {
+      "input_tokens": 22000,
+      "output_tokens": 8500,
+      "input_cached_tokens": 10000,
+      "reasoning_tokens": 1500,
+      "num_model_requests": 5,
+      "project_id": "proj_abc123",
+      "user_id": "user_xyz",
+      "api_key_id": "sk-proj-def",
+      "model": "codex-mini-latest",
+      "start_time": 1744804800,
+      "end_time": 1744804860
+    }
+  ],
+  "has_more": false,
+  "next_page": null
+}
