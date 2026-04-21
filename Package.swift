@@ -21,7 +21,7 @@ let package = Package(
             dependencies: ["UsageCore"],
             path: "tests/UsageCoreTests",
             resources: [
-                .copy("../fixtures"),
+                .copy("Fixtures"),
             ]
         ),
     ]

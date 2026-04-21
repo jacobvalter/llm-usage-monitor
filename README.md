@@ -39,7 +39,7 @@ Package.swift              SwiftPM manifest for UsageCore
 Sources/UsageCore/         Shared library
 apps/MacApp/               macOS menu-bar app
 apps/iOSApp/               iOS app + widget
-tests/                     Unit tests + JSON fixtures
+tests/UsageCoreTests/      Unit tests + JSON fixtures (Fixtures/)
 schemas/                   Language-agnostic schema (for future ports)
 docs/                      Architecture documentation
 ```

@@ -215,7 +215,7 @@ final class AnthropicAdminClientTests: XCTestCase {
     // MARK: - Helpers
 
     private func fixtureData(_ name: String) throws -> Data {
-        let url = Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "fixtures")!
+        let url = Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures")!
         return try Data(contentsOf: url)
     }
 }
