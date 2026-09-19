@@ -1,0 +1,40 @@
+{
+  "account_id": "acct_0123456789",
+  "email": "user@example.com",
+  "plan_type": "pro",
+  "rate_limit": {
+    "primary_window": {
+      "used_percent": 12,
+      "limit_window_seconds": 18000,
+      "reset_after_seconds": 14520,
+      "reset_at": 1758300000
+    },
+    "secondary_window": {
+      "used_percent": 27,
+      "limit_window_seconds": 604800,
+      "reset_after_seconds": 351720,
+      "reset_at": 1758637200
+    }
+  },
+  "additional_rate_limits": [
+    {
+      "limit_name": "code_review",
+      "metered_feature": "codex_code_review",
+      "rate_limit": {
+        "primary_window": {
+          "used_percent": 5,
+          "limit_window_seconds": 604800,
+          "reset_after_seconds": 351720,
+          "reset_at": 1758637200
+        },
+        "secondary_window": null
+      }
+    }
+  ],
+  "credits": {
+    "has_credits": false,
+    "unlimited": false,
+    "balance": "0"
+  },
+  "rate_limit_reached_type": null
+}

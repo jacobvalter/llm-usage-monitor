@@ -30,12 +30,13 @@
       "type": "string",
       "enum": [
         "admin_usage_api",
+        "claude_oauth_usage",
+        "codex_wham_usage",
         "claude_code_jsonl",
         "codex_jsonl",
-        "otel",
-        "chatgpt_wham"
+        "otel"
       ],
-      "description": "How this record was obtained. v0.1 uses admin_usage_api only."
+      "description": "How this record was obtained. v0.1: claude_oauth_usage + codex_wham_usage for limits, claude_code_jsonl + codex_jsonl for token detail; admin_usage_api is an optional API-key provider."
     },
     "bucketStart": {
       "type": "string",

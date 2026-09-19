@@ -4,7 +4,9 @@ A macOS menu-bar app and iOS companion app for monitoring Claude (Anthropic) and
 
 ## Overview
 
-LLM Usage Monitor polls the Anthropic and OpenAI Admin Usage APIs on a 60-second interval and displays aggregated token counts and estimated costs in the macOS menu bar. An iOS app mirrors the same data via iCloud (CloudKit private database).
+LLM Usage Monitor shows the rolling limits of your **Claude Max/Pro** and **ChatGPT Plus/Pro** subscriptions — the same 5‑hour and weekly percentages Claude Code and Codex CLI report — in the macOS menu bar, alongside today's token usage parsed from the CLIs' local session logs. An iOS app mirrors the same data via iCloud (CloudKit private database).
+
+It reuses the login tokens the CLIs already store on your Mac (macOS Keychain "Claude Code-credentials", `~/.codex/auth.json`) and calls the same usage endpoints the CLIs call. It never refreshes or modifies those tokens, and they never leave the Mac. Admin Usage APIs for API-key billing are available as an optional provider.
 
 ## Architecture
 
@@ -17,9 +19,10 @@ See [docs/architecture.md](docs/architecture.md) for the full design.
 ## Requirements
 
 - macOS 14+ / iOS 17+
-- Xcode 15+
-- An Anthropic Admin API key (`sk-ant-admin...`) and/or an OpenAI Admin API key
+- Xcode 15+ (and `xcodegen` to generate the app projects)
+- Claude Code and/or Codex CLI installed and signed in with your subscription
 - Apple Developer account (for CloudKit and TestFlight)
+- Optional: an Anthropic Admin API key if you also want API-key (Console org) usage
 
 ## Getting started
 

@@ -6,11 +6,18 @@ public enum Provider: String, Codable, Sendable {
 }
 
 public enum UsageSource: String, Codable, Sendable {
+    /// Org-level Admin Usage/Cost APIs (API-key billing). Optional provider.
     case adminUsageAPI = "admin_usage_api"
+    /// Claude Pro/Max rolling limits via api.anthropic.com/api/oauth/usage.
+    case claudeOAuthUsage = "claude_oauth_usage"
+    /// ChatGPT Plus/Pro rolling limits via chatgpt.com/backend-api/wham/usage.
+    case codexWhamUsage = "codex_wham_usage"
+    /// Per-turn token counts parsed from ~/.claude/projects/**/*.jsonl.
     case claudeCodeJSONL = "claude_code_jsonl"
+    /// Per-turn token counts parsed from ~/.codex/sessions/**/*.jsonl.
     case codexJSONL = "codex_jsonl"
+    /// Claude Code OpenTelemetry export.
     case otel
-    case chatgptWham = "chatgpt_wham"
 }
 
 public enum BucketWidth: String, Codable, Sendable {
