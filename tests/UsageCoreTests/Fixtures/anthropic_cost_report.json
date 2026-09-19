@@ -1,16 +1,48 @@
 {
   "data": [
     {
-      "cost_usd": "0.01875",
-      "model": "claude-sonnet-4-6",
-      "workspace_id": "wrkspc_01abc",
-      "snapshot_time": "2025-04-16T00:00:00Z"
-    },
-    {
-      "cost_usd": "0.00322",
-      "model": "claude-haiku-4-5-20251001",
-      "workspace_id": "wrkspc_01abc",
-      "snapshot_time": "2025-04-16T00:00:00Z"
+      "starting_at": "2026-09-19T00:00:00Z",
+      "ending_at": "2026-09-20T00:00:00Z",
+      "results": [
+        {
+          "amount": "123.78912",
+          "context_window": "0-200k",
+          "cost_type": "tokens",
+          "currency": "USD",
+          "description": "Claude Opus 4.7 Usage - Input Tokens",
+          "inference_geo": "global",
+          "model": "claude-opus-4-7",
+          "service_tier": "standard",
+          "token_type": "uncached_input_tokens",
+          "workspace_id": null
+        },
+        {
+          "amount": "18.5",
+          "context_window": "0-200k",
+          "cost_type": "tokens",
+          "currency": "USD",
+          "description": "Claude Sonnet 4.6 Usage - Output Tokens",
+          "inference_geo": "global",
+          "model": "claude-sonnet-4-6",
+          "service_tier": "standard",
+          "token_type": "output_tokens",
+          "workspace_id": null
+        },
+        {
+          "amount": "4",
+          "context_window": null,
+          "cost_type": "web_search",
+          "currency": "USD",
+          "description": "Web Search Usage",
+          "inference_geo": null,
+          "model": null,
+          "service_tier": null,
+          "token_type": null,
+          "workspace_id": null
+        }
+      ]
     }
-  ]
+  ],
+  "has_more": false,
+  "next_page": null
 }

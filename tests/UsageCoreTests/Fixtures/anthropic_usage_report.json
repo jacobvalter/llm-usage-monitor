@@ -1,26 +1,57 @@
 {
   "data": [
     {
-      "input_tokens": 12500,
-      "output_tokens": 3200,
-      "cache_read_input_tokens": 8000,
-      "cache_creation_input_tokens": 1500,
-      "model": "claude-sonnet-4-6",
-      "workspace_id": "wrkspc_01abc",
-      "api_key_id": "sk-ant-api03-abc",
-      "snapshot_time": "2025-04-16T12:00:00Z",
-      "request_count": 15
+      "starting_at": "2026-09-19T12:00:00Z",
+      "ending_at": "2026-09-19T12:01:00Z",
+      "results": [
+        {
+          "account_id": null,
+          "api_key_id": null,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 1500
+          },
+          "cache_read_input_tokens": 8000,
+          "context_window": null,
+          "inference_geo": null,
+          "model": "claude-opus-4-7",
+          "output_tokens": 3200,
+          "server_tool_use": {
+            "web_search_requests": 0
+          },
+          "service_account_id": null,
+          "service_tier": null,
+          "uncached_input_tokens": 12500,
+          "workspace_id": null
+        },
+        {
+          "account_id": null,
+          "api_key_id": null,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 200,
+            "ephemeral_5m_input_tokens": 300
+          },
+          "cache_read_input_tokens": 2000,
+          "context_window": null,
+          "inference_geo": null,
+          "model": "claude-sonnet-4-6",
+          "output_tokens": 1100,
+          "server_tool_use": {
+            "web_search_requests": 2
+          },
+          "service_account_id": null,
+          "service_tier": null,
+          "uncached_input_tokens": 4300,
+          "workspace_id": null
+        }
+      ]
     },
     {
-      "input_tokens": 4300,
-      "output_tokens": 1100,
-      "cache_read_input_tokens": 2000,
-      "cache_creation_input_tokens": 500,
-      "model": "claude-haiku-4-5-20251001",
-      "workspace_id": "wrkspc_01abc",
-      "api_key_id": "sk-ant-api03-def",
-      "snapshot_time": "2025-04-16T12:01:00Z",
-      "request_count": 8
+      "starting_at": "2026-09-19T12:01:00Z",
+      "ending_at": "2026-09-19T12:02:00Z",
+      "results": []
     }
-  ]
+  ],
+  "has_more": false,
+  "next_page": null
 }
