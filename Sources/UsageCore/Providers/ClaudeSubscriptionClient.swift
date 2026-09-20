@@ -82,22 +82,30 @@ public struct ClaudeSubscriptionClient: Sendable {
             windows.append(QuotaWindow(kind: .other, label: "Weekly · OAuth apps", usedPercent: pct,
                                        resetsAt: w.resetsAt.flatMap(DateParsing.date), windowSeconds: 7 * 86400))
         }
-        // Newer responses carry a generic `limits[]` list with model-scoped entries.
+        // `limits[]` repeats the fixed windows above as kind "session" / "weekly_all",
+        // and adds model-scoped ones as "weekly_scoped". Keep only the scoped entries.
         for entry in wire.limits ?? [] {
             guard let pct = entry.percent else { continue }
-            let modelId = entry.scope?.model?.id
-            // Skip entries that duplicate the fixed windows above.
-            if modelId == nil, entry.kind == "five_hour" || entry.kind == "seven_day" { continue }
-            let display = entry.scope?.model?.displayName ?? modelId
-            let label = display.map { "Weekly · \($0)" } ?? (entry.kind ?? "Limit")
-            windows.append(QuotaWindow(kind: modelId == nil ? .other : .weeklyModel, label: label, usedPercent: pct,
-                                       resetsAt: entry.resetsAt.flatMap(DateParsing.date), model: modelId))
+            if entry.kind == "session" || entry.kind == "weekly_all" { continue }
+            // A scoped limit names its model in display_name; `id` is often null.
+            let model = entry.scope?.model
+            let display = model?.displayName ?? model?.id
+            guard let display else { continue }
+            windows.append(QuotaWindow(kind: .weeklyModel, label: "Weekly · \(display)", usedPercent: pct,
+                                       resetsAt: entry.resetsAt.flatMap(DateParsing.date),
+                                       windowSeconds: 7 * 86400, model: model?.id ?? display))
         }
         if let extra = wire.extraUsage, extra.isEnabled == true, let pct = extra.utilization {
             windows.append(QuotaWindow(kind: .monthlyExtra, label: "Extra usage", usedPercent: pct))
         }
 
-        return QuotaSnapshot(provider: .anthropic, source: .claudeOAuthUsage, plan: plan, windows: windows, fetchedAt: fetchedAt)
+        let breakdown = (wire.sevenDayBreakdown?.rows ?? []).compactMap { row -> QuotaBreakdownRow? in
+            guard let name = row.displayName, let pct = row.percent else { return nil }
+            return QuotaBreakdownRow(key: row.key ?? name, label: name, percent: pct)
+        }
+
+        return QuotaSnapshot(provider: .anthropic, source: .claudeOAuthUsage, plan: plan,
+                             windows: windows, breakdown: breakdown, fetchedAt: fetchedAt)
     }
 
     // MARK: - Networking
@@ -136,6 +144,7 @@ struct OAuthUsageResponse: Decodable {
     let sevenDaySonnet: OAuthUsageWindow?
     let sevenDayOAuthApps: OAuthUsageWindow?
     let extraUsage: OAuthExtraUsage?
+    let sevenDayBreakdown: OAuthBreakdown?
     let limits: [OAuthLimitEntry]?
 
     enum CodingKeys: String, CodingKey {
@@ -145,7 +154,23 @@ struct OAuthUsageResponse: Decodable {
         case sevenDaySonnet = "seven_day_sonnet"
         case sevenDayOAuthApps = "seven_day_oauth_apps"
         case extraUsage = "extra_usage"
+        case sevenDayBreakdown = "seven_day_breakdown"
         case limits
+    }
+}
+
+struct OAuthBreakdown: Decodable {
+    let rows: [OAuthBreakdownRow]?
+}
+
+struct OAuthBreakdownRow: Decodable {
+    let key: String?
+    let displayName: String?
+    let percent: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case key, percent
+        case displayName = "display_name"
     }
 }
 

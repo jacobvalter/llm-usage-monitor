@@ -70,7 +70,7 @@ public struct ClaudeCredentialsReader: Sendable {
     public init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()),
-        keychainReader: @escaping @Sendable (String) -> Data? = ClaudeCredentialsReader.readGenericPassword
+        keychainReader: @escaping @Sendable (String) -> Data? = { ClaudeCredentialsReader.readGenericPassword(service: $0) }
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory

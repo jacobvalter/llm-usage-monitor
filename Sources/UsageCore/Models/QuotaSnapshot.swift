@@ -53,6 +53,19 @@ public struct QuotaWindow: Codable, Sendable, Equatable {
     }
 }
 
+/// One slice of where a weekly window was spent, e.g. "Claude Code 96%".
+public struct QuotaBreakdownRow: Codable, Sendable, Equatable {
+    public let key: String
+    public let label: String
+    public let percent: Double
+
+    public init(key: String, label: String, percent: Double) {
+        self.key = key
+        self.label = label
+        self.percent = percent
+    }
+}
+
 /// A point-in-time reading of a provider's subscription limits.
 /// This is what drives the 5‑hour / weekly bars in the UI.
 public struct QuotaSnapshot: Identifiable, Codable, Sendable, Equatable {
@@ -62,6 +75,8 @@ public struct QuotaSnapshot: Identifiable, Codable, Sendable, Equatable {
     /// Plan name as reported by the provider (e.g. "max", "pro", "plus"), if known.
     public let plan: String?
     public let windows: [QuotaWindow]
+    /// Where the weekly window went, when the provider reports it.
+    public let breakdown: [QuotaBreakdownRow]
     public let fetchedAt: Date
 
     public init(
@@ -70,6 +85,7 @@ public struct QuotaSnapshot: Identifiable, Codable, Sendable, Equatable {
         source: UsageSource,
         plan: String? = nil,
         windows: [QuotaWindow],
+        breakdown: [QuotaBreakdownRow] = [],
         fetchedAt: Date = Date()
     ) {
         self.id = id
@@ -77,6 +93,7 @@ public struct QuotaSnapshot: Identifiable, Codable, Sendable, Equatable {
         self.source = source
         self.plan = plan
         self.windows = windows
+        self.breakdown = breakdown
         self.fetchedAt = fetchedAt
     }
 

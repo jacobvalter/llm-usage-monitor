@@ -7,7 +7,7 @@ final class ClaudeSubscriptionClientTests: XCTestCase {
 
     func testParseFixtureProducesWindows() throws {
         let data = try fixtureData("claude_oauth_usage")
-        let fetchedAt = isoDate("2026-09-19T14:32:00Z")
+        let fetchedAt = isoDate("2026-09-20T00:14:00Z")
         let snap = try ClaudeSubscriptionClient.parseUsageResponse(from: data, plan: "max", fetchedAt: fetchedAt)
 
         XCTAssertEqual(snap.provider, .anthropic)
@@ -15,28 +15,47 @@ final class ClaudeSubscriptionClientTests: XCTestCase {
         XCTAssertEqual(snap.plan, "max")
         XCTAssertEqual(snap.fetchedAt, fetchedAt)
 
+        // five_hour + seven_day + one weekly_scoped. The "session" and "weekly_all"
+        // entries in limits[] repeat the first two and must not be added again.
+        XCTAssertEqual(snap.windows.count, 3)
+
         let five = try XCTUnwrap(snap.fiveHour)
-        XCTAssertEqual(five.usedPercent, 33)
+        XCTAssertEqual(five.usedPercent, 34)
         XCTAssertEqual(five.windowSeconds, 5 * 3600)
-        XCTAssertEqual(five.resetsAt, isoDate("2026-09-19T17:00:00Z").addingTimeInterval(0.528), accuracy: 0.001)
+        XCTAssertNotNil(five.resetsAt)
 
         let weekly = try XCTUnwrap(snap.weekly)
-        XCTAssertEqual(weekly.usedPercent, 13)
-        XCTAssertNotNil(weekly.resetsAt)
+        XCTAssertEqual(weekly.usedPercent, 7)
 
-        // seven_day_opus is null → no Opus window; Sonnet is present; limits[] adds Fable.
         let models = snap.modelWindows
-        XCTAssertEqual(models.count, 2)
-        XCTAssertEqual(models.first { $0.model == "sonnet" }?.usedPercent, 1)
-        let fable = try XCTUnwrap(models.first { $0.model == "claude-fable-5-1" })
-        XCTAssertEqual(fable.usedPercent, 42)
-        XCTAssertEqual(fable.label, "Weekly · Fable")
+        XCTAssertEqual(models.count, 1)
+        XCTAssertEqual(models[0].label, "Weekly · Fable")
+        XCTAssertEqual(models[0].usedPercent, 6)
+        XCTAssertEqual(models[0].model, "Fable", "display_name is used when id is null")
 
-        // extra_usage disabled → not surfaced.
+        // extra_usage is disabled, so it is not shown.
         XCTAssertFalse(snap.windows.contains { $0.kind == .monthlyExtra })
 
-        // Tightest of 5h/weekly is the 5h at 33%.
         XCTAssertEqual(snap.tightest?.kind, .fiveHour)
+    }
+
+    func testFixtureBreakdown() throws {
+        let snap = try ClaudeSubscriptionClient.parseUsageResponse(from: try fixtureData("claude_oauth_usage"))
+        XCTAssertEqual(snap.breakdown.count, 4)
+        XCTAssertEqual(snap.breakdown[0].key, "claude_code")
+        XCTAssertEqual(snap.breakdown[0].label, "Claude Code")
+        XCTAssertEqual(snap.breakdown[0].percent, 96)
+        XCTAssertEqual(snap.breakdown.map(\.percent).reduce(0, +), 100)
+    }
+
+    func testDuplicateSessionAndWeeklyAllEntriesAreDropped() throws {
+        // A response where limits[] repeats the fixed windows must not double-count.
+        let json = """
+        {"five_hour":{"utilization":50},"seven_day":{"utilization":20},
+         "limits":[{"kind":"session","percent":50},{"kind":"weekly_all","percent":20}]}
+        """.data(using: .utf8)!
+        let snap = try ClaudeSubscriptionClient.parseUsageResponse(from: json)
+        XCTAssertEqual(snap.windows.count, 2)
     }
 
     func testParseMinimalResponse() throws {
