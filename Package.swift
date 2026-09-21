@@ -3,18 +3,24 @@
 import PackageDescription
 
 let package = Package(
-    name: "UsageCore",
+    name: "LLMUsageMonitor",
     platforms: [
         .macOS(.v14),
         .iOS(.v17),
     ],
     products: [
         .library(name: "UsageCore", targets: ["UsageCore"]),
+        .executable(name: "LLMUsageMonitor", targets: ["MacApp"]),
     ],
     targets: [
         .target(
             name: "UsageCore",
             path: "Sources/UsageCore"
+        ),
+        .executableTarget(
+            name: "MacApp",
+            dependencies: ["UsageCore"],
+            path: "apps/MacApp/Sources"
         ),
         .testTarget(
             name: "UsageCoreTests",

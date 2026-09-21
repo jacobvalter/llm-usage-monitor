@@ -45,11 +45,30 @@ public struct QuotaWindow: Codable, Sendable, Equatable {
 
     public var remainingPercent: Double { 100 - usedPercent }
 
+    public var level: UsageLevel { UsageLevel(usedPercent: usedPercent) }
+
     /// Seconds until reset, or nil when unknown or already past.
     public func secondsUntilReset(from now: Date = Date()) -> TimeInterval? {
         guard let resetsAt else { return nil }
         let delta = resetsAt.timeIntervalSince(now)
         return delta > 0 ? delta : nil
+    }
+}
+
+/// How close a window is to its limit. One scale, used by every surface.
+public enum UsageLevel: String, Codable, Sendable, CaseIterable {
+    case normal    // green
+    case elevated  // yellow
+    case high      // orange
+    case critical  // red
+
+    public init(usedPercent: Double) {
+        switch usedPercent {
+        case ..<50: self = .normal
+        case ..<75: self = .elevated
+        case ..<90: self = .high
+        default: self = .critical
+        }
     }
 }
 
@@ -100,6 +119,9 @@ public struct QuotaSnapshot: Identifiable, Codable, Sendable, Equatable {
     public var fiveHour: QuotaWindow? { windows.first { $0.kind == .fiveHour } }
     public var weekly: QuotaWindow? { windows.first { $0.kind == .weekly } }
     public var modelWindows: [QuotaWindow] { windows.filter { $0.kind == .weeklyModel } }
+
+    /// Worst level across the windows that matter. Drives the menu bar badge.
+    public var level: UsageLevel { tightest.map(\.level) ?? .normal }
 
     /// The window closest to its limit — what a single status-bar ring should show.
     public var tightest: QuotaWindow? {
