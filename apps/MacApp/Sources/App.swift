@@ -9,7 +9,10 @@ import UsageCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
-    private let model = UsageViewModel()
+    private let settings = AppSettings.shared
+    private let notifier = NotificationService()
+    private lazy var model = UsageViewModel(settings: settings, notifier: notifier)
+    private let settingsWindow = SettingsWindowController()
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -20,8 +23,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
-            rootView: PopoverView(model: model) { NSApp.terminate(nil) }
+            rootView: PopoverView(
+                model: model,
+                settings: settings,
+                onSettings: { [weak self] in
+                    guard let self else { return }
+                    self.popover.performClose(nil)
+                    self.settingsWindow.show(settings: self.settings)
+                },
+                onQuit: { NSApp.terminate(nil) }
+            )
         )
+
+        // Settings changes must repaint the menu bar and re-time the poll loop.
+        settings.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.updateTitle()
+                    Task { await self?.model.refresh() }
+                }
+            }
+            .store(in: &cancellables)
 
         // Keep the menu bar title in step with the numbers.
         model.objectWillChange
@@ -38,30 +61,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Menu bar shows both windows: a dot for the worst level, then "5h n%  7d n%".
     private func updateTitle() {
         guard let button = statusItem.button else { return }
-        let five = model.worstFiveHour
-        let weekly = model.worstWeekly
+        let parts: [(String, QuotaWindow)] = [
+            ("5h", model.worstFiveHour),
+            ("7d", model.worstWeekly),
+            ("mo", model.worstMonthly),
+        ].compactMap { label, window in window.map { (label, $0) } }
 
-        button.image = Self.badge(for: model.headline?.level)
+        let thresholds = settings.thresholds
+        button.image = Self.badge(for: model.headline.map { $0.level(thresholds: thresholds) })
 
-        guard five != nil || weekly != nil else {
+        guard !parts.isEmpty else {
             button.attributedTitle = NSAttributedString(string: "")
             button.toolTip = "LLM Usage — no data yet"
             return
         }
 
         let title = NSMutableAttributedString()
-        if let five { title.append(Self.segment(label: "5h", window: five, leadingSpace: true)) }
-        if let weekly { title.append(Self.segment(label: "7d", window: weekly, leadingSpace: five != nil)) }
+        for (index, part) in parts.enumerated() {
+            title.append(Self.segment(label: part.0, window: part.1,
+                                      leadingSpace: index > 0, thresholds: thresholds))
+        }
         button.attributedTitle = title
 
-        button.toolTip = [five.map { "5-hour: \(Int($0.usedPercent))%" },
-                          weekly.map { "Weekly: \(Int($0.usedPercent))%" }]
-            .compactMap { $0 }
+        let names = ["5h": "5-hour", "7d": "Weekly", "mo": "Monthly"]
+        button.toolTip = parts
+            .map { "\(names[$0.0] ?? $0.0): \(Int($0.1.usedPercent))%" }
             .joined(separator: "   ")
     }
 
     /// One "5h 12%" run: dim label, percent in the level colour.
-    private static func segment(label: String, window: QuotaWindow, leadingSpace: Bool) -> NSAttributedString {
+    private static func segment(
+        label: String, window: QuotaWindow, leadingSpace: Bool, thresholds: LevelThresholds
+    ) -> NSAttributedString {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         let out = NSMutableAttributedString()
         out.append(NSAttributedString(
@@ -70,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
         out.append(NSAttributedString(
             string: "\(Int(window.usedPercent))%",
-            attributes: [.font: font, .foregroundColor: Self.nsColor(for: window.level)]
+            attributes: [.font: font, .foregroundColor: Self.nsColor(for: window.level(thresholds: thresholds))]
         ))
         return out
     }

@@ -199,18 +199,95 @@ struct FlowRow: Layout {
     }
 }
 
+/// 8022064 -> "8.0M". Keeps the panel narrow.
+func compactTokens(_ n: Int64) -> String {
+    switch n {
+    case 1_000_000...: return String(format: "%.1fM", Double(n) / 1_000_000)
+    case 1_000...:     return String(format: "%.0fK", Double(n) / 1_000)
+    default:           return "\(n)"
+    }
+}
+
+/// Today's tokens from the local session logs, with the split underneath.
+struct TodayTokens: View {
+    let totals: TokenTotals
+    let hourly: [Int64]
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                Text(compactTokens(totals.totalTokens))
+                    .font(.system(size: 22, weight: .bold)).monospacedDigit()
+                Text("tokens today").font(.system(size: 11)).foregroundStyle(secondary)
+                Spacer()
+                Text("\(totals.messageCount) msgs")
+                    .font(.system(size: 11)).monospacedDigit().foregroundStyle(secondary)
+            }
+
+            if hourly.contains(where: { $0 > 0 }) {
+                HourlyBars(values: hourly, accent: accent).frame(height: 22)
+            }
+
+            HStack(spacing: 0) {
+                split("In", totals.inputTokens)
+                split("Out", totals.outputTokens)
+                split("Cache rd", totals.cacheReadTokens)
+                split("Cache wr", totals.cacheCreationTokens)
+            }
+        }
+    }
+
+    private func split(_ label: String, _ value: Int64) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.system(size: 10)).foregroundStyle(secondary)
+            Text(compactTokens(value))
+                .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Tokens per hour for the last 12 hours.
+struct HourlyBars: View {
+    let values: [Int64]
+    let accent: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let peak = max(values.max() ?? 1, 1)
+            let width = (geo.size.width - CGFloat(values.count - 1) * 2) / CGFloat(values.count)
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(Array(values.enumerated()), id: \.offset) { _, v in
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(v == 0 ? Color.white.opacity(0.10) : accent.opacity(0.85))
+                        .frame(width: max(2, width),
+                               height: v == 0 ? 2 : max(2, geo.size.height * CGFloat(v) / CGFloat(peak)))
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
+        }
+    }
+}
+
 // MARK: - Bar
 
 struct QuotaBar: View {
     let window: QuotaWindow
     var compact = false
+    var thresholds: LevelThresholds = .standard
 
-    private var fill: Color { window.level.color }
+    private var fill: Color { window.level(thresholds: thresholds).color }
 
     private var resetText: String {
         guard let seconds = window.secondsUntilReset() else { return "—" }
         let h = Int(seconds) / 3600
         let m = (Int(seconds) % 3600) / 60
+        if window.kind == .monthly, let at = window.resetsAt {
+            let f = DateFormatter()
+            f.dateFormat = "d MMM"
+            return "resets \(f.string(from: at))"
+        }
         if h >= 24 { return "resets in \(h / 24)d \(h % 24)h" }
         return h > 0 ? "resets in \(h)h \(m)m" : "resets in \(m)m"
     }
@@ -246,6 +323,7 @@ struct QuotaBar: View {
 
 struct ProviderCard: View {
     let state: ProviderState
+    var thresholds: LevelThresholds = .standard
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -263,7 +341,7 @@ struct ProviderCard: View {
                 Spacer()
                 if state.snapshot != nil {
                     Sparkline(values: state.history,
-                              color: state.snapshot?.fiveHour?.level.color ?? state.accent)
+                              color: state.snapshot?.tightest?.level(thresholds: thresholds).color ?? state.accent)
                         .frame(width: 56, height: 18)
                 }
                 if state.isLoading {
@@ -278,17 +356,49 @@ struct ProviderCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let totals = state.todayTotals, totals.messageCount > 0 {
+                TodayTokens(totals: totals, hourly: state.hourlyTokens, accent: state.accent)
+                Divider().overlay(hairline)
+            }
+
             if let snap = state.snapshot {
-                ForEach(Array(snap.windows.filter { $0.kind == .fiveHour || $0.kind == .weekly }.enumerated()),
-                        id: \.offset) { _, w in
-                    QuotaBar(window: w)
+                ForEach(Array(snap.measuredWindows.filter {
+                    $0.kind == .fiveHour || $0.kind == .weekly || $0.kind == .monthly
+                }.enumerated()), id: \.offset) { _, w in
+                    QuotaBar(window: w, thresholds: thresholds)
+                }
+
+                if !snap.unlimitedWindows.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "infinity").font(.system(size: 10))
+                        Text(snap.unlimitedWindows.map(\.label).joined(separator: ", ") + " · unlimited")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(secondary)
                 }
 
                 let models = snap.modelWindows
                 if !models.isEmpty {
                     Divider().overlay(hairline)
                     ForEach(Array(models.enumerated()), id: \.offset) { _, w in
-                        QuotaBar(window: w, compact: true)
+                        QuotaBar(window: w, compact: true, thresholds: thresholds)
+                    }
+                }
+
+                if !state.todayByModel.isEmpty {
+                    Divider().overlay(hairline)
+                    Text("Tokens today by model").font(.system(size: 11)).foregroundStyle(secondary)
+                    ForEach(Array(state.todayByModel.prefix(4).enumerated()), id: \.offset) { _, row in
+                        HStack {
+                            Text(row.model).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
+                                .lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 8)
+                            Text("\(row.totals.messageCount)")
+                                .font(.system(size: 11)).monospacedDigit().foregroundStyle(secondary)
+                            Text(compactTokens(row.totals.totalTokens))
+                                .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+                                .frame(minWidth: 44, alignment: .trailing)
+                        }
                     }
                 }
 
@@ -308,9 +418,9 @@ struct ProviderCard: View {
 
 struct PopoverView: View {
     @ObservedObject var model: UsageViewModel
+    @ObservedObject var settings: AppSettings
+    var onSettings: () -> Void
     var onQuit: () -> Void
-
-    @State private var startAtLogin = LoginItem.isEnabled
 
     private var updatedText: String {
         guard let d = model.lastUpdated else { return "never" }
@@ -327,26 +437,21 @@ struct PopoverView: View {
             }
             .padding(.horizontal, 4)
 
-            ForEach(model.providers) { ProviderCard(state: $0) }
-
-            if LoginItem.isSupported {
-                Divider().overlay(hairline).padding(.horizontal, 4)
-                Toggle(isOn: $startAtLogin) {
-                    Text("Start at login").font(.system(size: 12))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .tint(UsageLevel.normal.color)
-                .padding(.horizontal, 4)
-                .onChange(of: startAtLogin) { _, wanted in
-                    // Snap back if the system refused the change.
-                    startAtLogin = LoginItem.setEnabled(wanted)
-                }
+            if model.providers.isEmpty {
+                Text("Every provider is switched off. Open Settings to turn one on.")
+                    .font(.system(size: 12)).foregroundStyle(secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .card()
+            } else {
+                ForEach(model.providers) { ProviderCard(state: $0, thresholds: settings.thresholds) }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Button { Task { await model.refresh() } } label: {
                     Label("Refresh", systemImage: "arrow.clockwise").font(.system(size: 12))
+                }
+                Button(action: onSettings) {
+                    Label("Settings", systemImage: "gearshape").font(.system(size: 12))
                 }
                 Spacer()
                 Button(role: .destructive, action: onQuit) {

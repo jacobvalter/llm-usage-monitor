@@ -113,6 +113,7 @@ public struct ClaudeSubscriptionClient: Sendable {
     private func get(_ url: URL) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 15
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(Self.betaHeader, forHTTPHeaderField: "anthropic-beta")
         request.setValue("claude-code/\(claudeCodeVersion)", forHTTPHeaderField: "User-Agent")

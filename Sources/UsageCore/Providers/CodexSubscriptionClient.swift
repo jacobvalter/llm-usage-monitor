@@ -43,6 +43,7 @@ public struct CodexSubscriptionClient: Sendable {
     public func fetchQuota() async throws -> QuotaSnapshot {
         var request = URLRequest(url: Self.usageURL)
         request.httpMethod = "GET"
+        request.timeoutInterval = 15
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")

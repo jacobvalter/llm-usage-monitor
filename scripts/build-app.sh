@@ -4,17 +4,23 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
 APP="$ROOT/build/LLMUsageMonitor.app"
 BIN_NAME="LLMUsageMonitor"
 
 echo "==> Building release binary"
 swift build -c release --package-path "$ROOT" --product "$BIN_NAME"
 
+echo "==> Generating icon"
+swift "$ROOT/scripts/make-icon.swift"
+iconutil -c icns "$ROOT/build/AppIcon.iconset" -o "$ROOT/build/AppIcon.icns"
+
 echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/.build/release/$BIN_NAME" "$APP/Contents/MacOS/$BIN_NAME"
 cp "$ROOT/apps/MacApp/Info.plist" "$APP/Contents/Info.plist"
+cp "$ROOT/build/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # Ad-hoc signature. Required for SMAppService ("Start at login") to work.
 echo "==> Signing (ad-hoc)"

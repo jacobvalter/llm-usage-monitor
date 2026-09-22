@@ -3,6 +3,7 @@ import Foundation
 public enum Provider: String, Codable, Sendable {
     case anthropic
     case openai
+    case githubCopilot = "github_copilot"
 }
 
 public enum UsageSource: String, Codable, Sendable {
@@ -16,6 +17,8 @@ public enum UsageSource: String, Codable, Sendable {
     case claudeCodeJSONL = "claude_code_jsonl"
     /// Per-turn token counts parsed from ~/.codex/sessions/**/*.jsonl.
     case codexJSONL = "codex_jsonl"
+    /// Copilot monthly quotas via api.github.com/copilot_internal/user.
+    case copilotInternalUser = "copilot_internal_user"
     /// Claude Code OpenTelemetry export.
     case otel
 }
