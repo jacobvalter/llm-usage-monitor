@@ -9,6 +9,9 @@ struct ProviderState: Identifiable {
     var error: String?
     var isLoading = false
 
+    /// Recent 5-hour readings, oldest first. Feeds the sparkline. Memory only.
+    var history: [Double] = []
+
     var id: String { provider.rawValue }
 
     var name: String { provider == .anthropic ? "Claude" : "Codex" }
@@ -32,6 +35,16 @@ final class UsageViewModel: ObservableObject {
     /// The window nearest its limit across every provider. Drives the menu bar title.
     var headline: QuotaWindow? {
         providers.compactMap(\.snapshot?.tightest).max { $0.usedPercent < $1.usedPercent }
+    }
+
+    /// Busiest 5-hour window across providers, for the menu bar.
+    var worstFiveHour: QuotaWindow? {
+        providers.compactMap(\.snapshot?.fiveHour).max { $0.usedPercent < $1.usedPercent }
+    }
+
+    /// Busiest weekly window across providers, for the menu bar.
+    var worstWeekly: QuotaWindow? {
+        providers.compactMap(\.snapshot?.weekly).max { $0.usedPercent < $1.usedPercent }
     }
 
     func start() {
@@ -65,7 +78,9 @@ final class UsageViewModel: ObservableObject {
                 accessToken: creds.accessToken,
                 claudeCodeVersion: Self.claudeCodeVersion()
             )
-            claude.snapshot = try await client.fetchQuota(plan: creds.subscriptionType)
+            let snap = try await client.fetchQuota(plan: creds.subscriptionType)
+            claude.snapshot = snap
+            Self.record(snap, into: &claude.history)
             claude.error = nil
         } catch {
             claude.error = Self.message(for: error)
@@ -76,12 +91,25 @@ final class UsageViewModel: ObservableObject {
     private func refreshCodex() async {
         do {
             let creds = try CodexCredentialsReader().loadValid()
-            codex.snapshot = try await CodexSubscriptionClient(credentials: creds).fetchQuota()
+            let snap = try await CodexSubscriptionClient(credentials: creds).fetchQuota()
+            codex.snapshot = snap
+            Self.record(snap, into: &codex.history)
             codex.error = nil
         } catch {
             codex.error = Self.message(for: error)
         }
         codex.isLoading = false
+    }
+
+    /// Keeps about an hour of samples at the 60s poll rate.
+    private static let historyLimit = 60
+
+    private static func record(_ snap: QuotaSnapshot, into history: inout [Double]) {
+        guard let pct = snap.fiveHour?.usedPercent else { return }
+        history.append(pct)
+        if history.count > historyLimit {
+            history.removeFirst(history.count - historyLimit)
+        }
     }
 
     private static func message(for error: Error) -> String {

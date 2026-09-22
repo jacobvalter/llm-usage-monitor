@@ -35,30 +35,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
     }
 
+    /// Menu bar shows both windows: a dot for the worst level, then "5h n%  7d n%".
     private func updateTitle() {
         guard let button = statusItem.button else { return }
-        guard let w = model.headline else {
-            button.image = Self.badge(for: nil)
-            button.title = ""
+        let five = model.worstFiveHour
+        let weekly = model.worstWeekly
+
+        button.image = Self.badge(for: model.headline?.level)
+
+        guard five != nil || weekly != nil else {
+            button.attributedTitle = NSAttributedString(string: "")
             button.toolTip = "LLM Usage — no data yet"
             return
         }
-        button.image = Self.badge(for: w.level)
-        button.title = " \(Int(w.usedPercent))%"
-        button.toolTip = "\(w.label): \(Int(w.usedPercent))% used"
+
+        let title = NSMutableAttributedString()
+        if let five { title.append(Self.segment(label: "5h", window: five, leadingSpace: true)) }
+        if let weekly { title.append(Self.segment(label: "7d", window: weekly, leadingSpace: five != nil)) }
+        button.attributedTitle = title
+
+        button.toolTip = [five.map { "5-hour: \(Int($0.usedPercent))%" },
+                          weekly.map { "Weekly: \(Int($0.usedPercent))%" }]
+            .compactMap { $0 }
+            .joined(separator: "   ")
+    }
+
+    /// One "5h 12%" run: dim label, percent in the level colour.
+    private static func segment(label: String, window: QuotaWindow, leadingSpace: Bool) -> NSAttributedString {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        let out = NSMutableAttributedString()
+        out.append(NSAttributedString(
+            string: "\(leadingSpace ? "  " : " ")\(label) ",
+            attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]
+        ))
+        out.append(NSAttributedString(
+            string: "\(Int(window.usedPercent))%",
+            attributes: [.font: font, .foregroundColor: Self.nsColor(for: window.level)]
+        ))
+        return out
+    }
+
+    private static func nsColor(for level: UsageLevel) -> NSColor {
+        switch level {
+        case .normal:   return NSColor(red: 0.30, green: 0.78, blue: 0.47, alpha: 1)
+        case .elevated: return NSColor(red: 0.95, green: 0.80, blue: 0.25, alpha: 1)
+        case .high:     return NSColor(red: 0.96, green: 0.58, blue: 0.20, alpha: 1)
+        case .critical: return NSColor(red: 0.93, green: 0.33, blue: 0.31, alpha: 1)
+        }
     }
 
     /// Filled dot in the level colour. Not a template image, so the colour survives.
     private static func badge(for level: UsageLevel?) -> NSImage {
-        let color: NSColor
-        switch level {
-        case .normal:   color = NSColor(red: 0.30, green: 0.78, blue: 0.47, alpha: 1)
-        case .elevated: color = NSColor(red: 0.95, green: 0.80, blue: 0.25, alpha: 1)
-        case .high:     color = NSColor(red: 0.96, green: 0.58, blue: 0.20, alpha: 1)
-        case .critical: color = NSColor(red: 0.93, green: 0.33, blue: 0.31, alpha: 1)
-        case nil:       color = NSColor.tertiaryLabelColor
-        }
-        let size = NSSize(width: 10, height: 10)
+        let color = level.map(Self.nsColor(for:)) ?? NSColor.tertiaryLabelColor
+        let size = NSSize(width: 9, height: 9)
         let image = NSImage(size: size, flipped: false) { rect in
             color.setFill()
             NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()

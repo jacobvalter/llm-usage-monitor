@@ -1,26 +1,11 @@
+import AppKit
 import SwiftUI
 import UsageCore
 
-// MARK: - Shared style
+// MARK: - Palette
 
-private extension View {
-    /// The frosted card used throughout the popover.
-    func card() -> some View {
-        self
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                    )
-            )
-    }
-}
-
-private let secondary = Color.white.opacity(0.62)
+private let secondary = Color.white.opacity(0.60)
+private let hairline = Color.white.opacity(0.10)
 
 extension UsageLevel {
     /// Green below half, then yellow, orange, red.
@@ -34,10 +19,191 @@ extension UsageLevel {
     }
 }
 
+// MARK: - Background
+
+/// Real macOS blur behind the popover.
+struct VisualEffectBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+/// Blur, then a faint colour wash so the panel reads as dark glass.
+private struct GlassBackdrop: View {
+    var body: some View {
+        ZStack {
+            VisualEffectBackground()
+            LinearGradient(
+                colors: [
+                    Color(red: 0.36, green: 0.20, blue: 0.62).opacity(0.38),
+                    Color(red: 0.10, green: 0.08, blue: 0.18).opacity(0.62),
+                    Color(red: 0.62, green: 0.24, blue: 0.22).opacity(0.22),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private extension View {
+    /// The frosted card used throughout the popover.
+    func card() -> some View {
+        self
+            .padding(.horizontal, 15)
+            .padding(.vertical, 13)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.20), Color.white.opacity(0.06)],
+                            startPoint: .top, endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+    }
+}
+
+// MARK: - Small pieces
+
+/// Trend of the 5-hour window over the session. Memory only, so it starts empty.
+struct Sparkline: View {
+    let values: [Double]
+    let color: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            if values.count < 2 {
+                Text("collecting…")
+                    .font(.system(size: 9))
+                    .foregroundStyle(secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            } else {
+                let maxV = max(values.max() ?? 1, 1)
+                let step = geo.size.width / CGFloat(values.count - 1)
+                let points = values.enumerated().map { i, v in
+                    CGPoint(x: CGFloat(i) * step,
+                            y: geo.size.height * (1 - CGFloat(v / maxV)))
+                }
+                ZStack {
+                    Path { p in
+                        p.move(to: CGPoint(x: 0, y: geo.size.height))
+                        points.forEach { p.addLine(to: $0) }
+                        p.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
+                        p.closeSubpath()
+                    }
+                    .fill(LinearGradient(colors: [color.opacity(0.35), color.opacity(0.02)],
+                                         startPoint: .top, endPoint: .bottom))
+                    Path { p in
+                        p.move(to: points[0])
+                        points.dropFirst().forEach { p.addLine(to: $0) }
+                    }
+                    .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+            }
+        }
+    }
+}
+
+/// Where the weekly window went, as one stacked bar.
+struct StackedBreakdownBar: View {
+    let rows: [QuotaBreakdownRow]
+
+    private static let palette: [Color] = [
+        Color(red: 0.88, green: 0.54, blue: 0.42),
+        Color(red: 0.45, green: 0.62, blue: 0.92),
+        Color(red: 0.62, green: 0.52, blue: 0.90),
+        Color(red: 0.55, green: 0.58, blue: 0.66),
+    ]
+
+    private var visible: [(row: QuotaBreakdownRow, color: Color)] {
+        rows.filter { $0.percent > 0 }
+            .enumerated()
+            .map { ($0.element, Self.palette[$0.offset % Self.palette.count]) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Weekly went to").font(.system(size: 11)).foregroundStyle(secondary)
+
+            GeometryReader { geo in
+                HStack(spacing: 1.5) {
+                    ForEach(Array(visible.enumerated()), id: \.offset) { _, item in
+                        Capsule()
+                            .fill(item.color)
+                            .frame(width: max(2, geo.size.width * item.row.percent / 100))
+                    }
+                }
+            }
+            .frame(height: 6)
+
+            FlowRow(spacing: 10) {
+                ForEach(Array(visible.enumerated()), id: \.offset) { _, item in
+                    HStack(spacing: 4) {
+                        Circle().fill(item.color).frame(width: 6, height: 6)
+                        Text(item.row.label).font(.system(size: 11)).foregroundStyle(.white.opacity(0.85))
+                        Text("\(Int(item.row.percent))%")
+                            .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                            .foregroundStyle(secondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Wraps its children onto more lines when they do not fit.
+struct FlowRow: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 5
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0; y += lineHeight + lineSpacing; lineHeight = 0
+            }
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        return CGSize(width: maxWidth == .infinity ? x : maxWidth, height: y + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, lineHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX; y += lineHeight + lineSpacing; lineHeight = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+    }
+}
+
 // MARK: - Bar
 
 struct QuotaBar: View {
     let window: QuotaWindow
+    var compact = false
 
     private var fill: Color { window.level.color }
 
@@ -45,24 +211,30 @@ struct QuotaBar: View {
         guard let seconds = window.secondsUntilReset() else { return "—" }
         let h = Int(seconds) / 3600
         let m = (Int(seconds) % 3600) / 60
+        if h >= 24 { return "resets in \(h / 24)d \(h % 24)h" }
         return h > 0 ? "resets in \(h)h \(m)m" : "resets in \(m)m"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
+            HStack(spacing: 5) {
                 Text(window.label).font(.system(size: 12)).foregroundStyle(secondary)
-                Spacer()
+                Spacer(minLength: 6)
                 Text("\(Int(window.usedPercent))%")
                     .font(.system(size: 12, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(fill)
-                Text("· \(resetText)").font(.system(size: 12)).foregroundStyle(secondary)
+                if !compact {
+                    Text("· \(resetText)").font(.system(size: 11)).foregroundStyle(secondary)
+                }
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.12))
-                    Capsule().fill(fill)
+                    Capsule().fill(Color.black.opacity(0.28))
+                    Capsule()
+                        .fill(LinearGradient(colors: [fill.opacity(0.75), fill],
+                                             startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(3, geo.size.width * window.usedPercent / 100))
+                        .shadow(color: fill.opacity(0.45), radius: 3)
                 }
             }
             .frame(height: 6)
@@ -79,53 +251,50 @@ struct ProviderCard: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 8) {
                 Circle().fill(state.accent).frame(width: 9, height: 9)
+                    .shadow(color: state.accent.opacity(0.7), radius: 3)
                 Text(state.name).font(.system(size: 14, weight: .bold))
                 if let plan = state.snapshot?.plan {
                     Text(plan.uppercased())
                         .font(.system(size: 9, weight: .bold))
                         .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
-                        .foregroundStyle(secondary)
+                        .background(Capsule().fill(Color.white.opacity(0.14)))
+                        .foregroundStyle(.white.opacity(0.75))
                 }
                 Spacer()
+                if state.snapshot != nil {
+                    Sparkline(values: state.history,
+                              color: state.snapshot?.fiveHour?.level.color ?? state.accent)
+                        .frame(width: 56, height: 18)
+                }
                 if state.isLoading {
-                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                    ProgressView().controlSize(.small).scaleEffect(0.55)
                 }
             }
 
             if let error = state.error {
                 Text(error)
                     .font(.system(size: 11))
-                    .foregroundStyle(Color(red: 0.96, green: 0.70, blue: 0.30))
+                    .foregroundStyle(UsageLevel.high.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if let snap = state.snapshot {
-                let main = snap.windows.filter { $0.kind == .fiveHour || $0.kind == .weekly }
-                ForEach(Array(main.enumerated()), id: \.offset) { _, w in
+                ForEach(Array(snap.windows.filter { $0.kind == .fiveHour || $0.kind == .weekly }.enumerated()),
+                        id: \.offset) { _, w in
                     QuotaBar(window: w)
                 }
 
                 let models = snap.modelWindows
                 if !models.isEmpty {
-                    Divider().overlay(Color.white.opacity(0.1))
+                    Divider().overlay(hairline)
                     ForEach(Array(models.enumerated()), id: \.offset) { _, w in
-                        QuotaBar(window: w)
+                        QuotaBar(window: w, compact: true)
                     }
                 }
 
                 if !snap.breakdown.isEmpty {
-                    Divider().overlay(Color.white.opacity(0.1))
-                    Text("Weekly went to").font(.system(size: 11)).foregroundStyle(secondary)
-                    ForEach(snap.breakdown.filter { $0.percent > 0 }, id: \.key) { row in
-                        HStack {
-                            Text(row.label).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
-                            Spacer()
-                            Text("\(Int(row.percent))%")
-                                .font(.system(size: 12, weight: .semibold)).monospacedDigit()
-                                .foregroundStyle(secondary)
-                        }
-                    }
+                    Divider().overlay(hairline)
+                    StackedBreakdownBar(rows: snap.breakdown)
                 }
             } else if state.error == nil {
                 Text("Loading…").font(.system(size: 12)).foregroundStyle(secondary)
@@ -141,6 +310,8 @@ struct PopoverView: View {
     @ObservedObject var model: UsageViewModel
     var onQuit: () -> Void
 
+    @State private var startAtLogin = LoginItem.isEnabled
+
     private var updatedText: String {
         guard let d = model.lastUpdated else { return "never" }
         let s = Int(Date().timeIntervalSince(d))
@@ -149,7 +320,7 @@ struct PopoverView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("LLM Usage").font(.system(size: 15, weight: .bold))
                 Spacer()
                 Text("Updated \(updatedText)").font(.system(size: 11)).foregroundStyle(secondary)
@@ -158,10 +329,23 @@ struct PopoverView: View {
 
             ForEach(model.providers) { ProviderCard(state: $0) }
 
+            if LoginItem.isSupported {
+                Divider().overlay(hairline).padding(.horizontal, 4)
+                Toggle(isOn: $startAtLogin) {
+                    Text("Start at login").font(.system(size: 12))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(UsageLevel.normal.color)
+                .padding(.horizontal, 4)
+                .onChange(of: startAtLogin) { _, wanted in
+                    // Snap back if the system refused the change.
+                    startAtLogin = LoginItem.setEnabled(wanted)
+                }
+            }
+
             HStack(spacing: 8) {
-                Button {
-                    Task { await model.refresh() }
-                } label: {
+                Button { Task { await model.refresh() } } label: {
                     Label("Refresh", systemImage: "arrow.clockwise").font(.system(size: 12))
                 }
                 Spacer()
@@ -171,11 +355,11 @@ struct PopoverView: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 4)
-            .padding(.top, 2)
+            .padding(.top, 1)
         }
         .padding(14)
         .frame(width: 340)
-        .background(Color(red: 0.09, green: 0.07, blue: 0.16))
+        .background(GlassBackdrop())
         .preferredColorScheme(.dark)
     }
 }
