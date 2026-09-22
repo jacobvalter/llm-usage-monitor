@@ -326,6 +326,13 @@ struct QuotaBar: View {
                 }
             }
             .frame(height: 6)
+
+            // Exact numbers when the provider gives them, e.g. "12 of 3,000 used".
+            if let counts = window.countsText {
+                Text(counts)
+                    .font(.system(size: 10)).monospacedDigit()
+                    .foregroundStyle(secondary)
+            }
         }
     }
 }

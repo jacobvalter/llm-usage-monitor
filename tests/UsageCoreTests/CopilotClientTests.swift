@@ -297,3 +297,75 @@ final class CopilotBusinessPlanTests: XCTestCase {
         XCTAssertEqual(snap.measuredWindows.count, 2)
     }
 }
+
+final class CopilotCountsTests: XCTestCase {
+
+    func testBusinessSeatCarriesExactCounts() throws {
+        let json = """
+        {"copilot_plan":"business","quota_reset_date":"2026-10-01",
+         "quota_snapshots":{"premium_interactions":{
+            "has_quota":true,"unlimited":false,"entitlement":3000,
+            "remaining":2817,"percent_remaining":93.9,
+            "overage_count":0,"overage_permitted":true}}}
+        """.data(using: .utf8)!
+        let w = try XCTUnwrap(CopilotClient.parseUserResponse(from: json).measuredWindows.first)
+
+        XCTAssertEqual(w.limit, 3000)
+        XCTAssertEqual(w.used, 183, "entitlement minus remaining")
+        XCTAssertEqual(w.countsText(locale: Locale(identifier: "en_US")), "183 of 3,000 used")
+    }
+
+    func testOverageIsAppendedOnlyWhenSpent() throws {
+        func window(overage: Double) -> QuotaWindow {
+            QuotaWindow(kind: .monthly, label: "Premium", usedPercent: 100,
+                        used: 3000, limit: 3000, overage: overage)
+        }
+        let us = Locale(identifier: "en_US")
+        XCTAssertEqual(window(overage: 0).countsText(locale: us), "3,000 of 3,000 used")
+        XCTAssertEqual(window(overage: 42).countsText(locale: us), "3,000 of 3,000 used · 42 over")
+    }
+
+    func testFreePlanQuotasCarryCountsToo() throws {
+        let snap = try CopilotClient.parseUserResponse(from: try fixtureData("copilot_user"))
+        let chat = try XCTUnwrap(snap.measuredWindows.first { $0.label == "Chat" })
+        XCTAssertEqual(chat.limit, 200)
+        XCTAssertEqual(chat.used, 75, "200 entitlement minus 125 remaining")
+        XCTAssertEqual(chat.countsText(locale: Locale(identifier: "en_US")), "75 of 200 used")
+    }
+
+    func testGroupingFollowsTheReaderLocale() {
+        let w = QuotaWindow(kind: .monthly, label: "Premium", usedPercent: 0,
+                            used: 183, limit: 3000)
+
+        // Built from each locale's own separator: Czech uses a non-breaking
+        // space, which is invisible in a source literal and easy to get wrong.
+        for id in ["cs_CZ", "de_DE", "en_US"] {
+            let locale = Locale(identifier: id)
+            let f = NumberFormatter()
+            f.numberStyle = .decimal
+            f.locale = locale
+            let grouped = f.string(from: 3000)!
+            XCTAssertEqual(w.countsText(locale: locale), "183 of \(grouped) used", "locale \(id)")
+        }
+
+        // The separators really do differ, so this is a meaningful check.
+        XCTAssertNotEqual(w.countsText(locale: Locale(identifier: "cs_CZ")),
+                          w.countsText(locale: Locale(identifier: "en_US")))
+    }
+
+    func testUnlimitedQuotaHasNoCounts() throws {
+        let json = """
+        {"quota_snapshots":{"chat":{"has_quota":true,"unlimited":true,
+          "entitlement":0,"remaining":0,"percent_remaining":100}}}
+        """.data(using: .utf8)!
+        let w = try XCTUnwrap(CopilotClient.parseUserResponse(from: json).unlimitedWindows.first)
+        XCTAssertNil(w.limit)
+        XCTAssertNil(w.countsText, "an uncapped quota has nothing to count against")
+    }
+
+    func testClaudeWindowsHaveNoCounts() throws {
+        let json = #"{"five_hour":{"utilization":30}}"#.data(using: .utf8)!
+        let snap = try ClaudeSubscriptionClient.parseUsageResponse(from: json)
+        XCTAssertNil(snap.fiveHour?.countsText, "Claude reports a percentage only")
+    }
+}

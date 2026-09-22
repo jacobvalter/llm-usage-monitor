@@ -30,6 +30,12 @@ public struct QuotaWindow: Codable, Sendable, Equatable {
     public let model: String?
     /// The plan grants this without a cap, so the percentage carries no meaning.
     public let isUnlimited: Bool
+    /// Exact counts, when the provider reports them. Claude gives a percentage
+    /// only; Copilot gives real request numbers.
+    public let used: Double?
+    public let limit: Double?
+    /// Requests allowed beyond the limit that have already been spent.
+    public let overage: Double?
 
     public init(
         kind: QuotaWindowKind,
@@ -38,7 +44,10 @@ public struct QuotaWindow: Codable, Sendable, Equatable {
         resetsAt: Date? = nil,
         windowSeconds: Int? = nil,
         model: String? = nil,
-        isUnlimited: Bool = false
+        isUnlimited: Bool = false,
+        used: Double? = nil,
+        limit: Double? = nil,
+        overage: Double? = nil
     ) {
         self.kind = kind
         self.label = label
@@ -47,6 +56,28 @@ public struct QuotaWindow: Codable, Sendable, Equatable {
         self.windowSeconds = windowSeconds
         self.model = model
         self.isUnlimited = isUnlimited
+        self.used = used
+        self.limit = limit
+        self.overage = overage
+    }
+
+    /// "12 of 3,000 used" when exact counts are known, else nil.
+    /// Grouping follows the reader's locale, so this is "3 000" in Czech.
+    public var countsText: String? { countsText(locale: .current) }
+
+    public func countsText(locale: Locale) -> String? {
+        guard let used, let limit, limit > 0 else { return nil }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = locale
+        f.maximumFractionDigits = 0
+        guard let u = f.string(from: NSNumber(value: used)),
+              let l = f.string(from: NSNumber(value: limit)) else { return nil }
+        var text = "\(u) of \(l) used"
+        if let overage, overage > 0, let o = f.string(from: NSNumber(value: overage)) {
+            text += " · \(o) over"
+        }
+        return text
     }
 
     public var remainingPercent: Double { 100 - usedPercent }

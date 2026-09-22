@@ -87,13 +87,20 @@ public struct CopilotClient: Sendable {
                 let unlimited = snap.unlimited == true
                 // An unlimited quota has no meaningful percentage; it is kept only as a note.
                 guard let remaining = snap.percentRemaining else { return nil }
+                // An unlimited quota reports entitlement 0, so counts stay nil there.
+                let limit = (!unlimited && (snap.entitlement ?? 0) > 0) ? snap.entitlement : nil
+                let used = limit.flatMap { total in snap.remaining.map { total - $0 } }
+
                 return QuotaWindow(
                     kind: .monthly,
                     label: Self.label(for: key),
                     usedPercent: unlimited ? 0 : 100 - remaining,
                     resetsAt: unlimited ? nil : resetsAt,
                     model: key,
-                    isUnlimited: unlimited
+                    isUnlimited: unlimited,
+                    used: used,
+                    limit: limit,
+                    overage: snap.overageCount
                 )
             }
 
