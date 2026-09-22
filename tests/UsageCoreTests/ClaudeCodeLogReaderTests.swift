@@ -233,3 +233,111 @@ final class ClaudeCodeLogCacheTests: XCTestCase {
         XCTAssertEqual(entries.count, 3)
     }
 }
+
+final class ClaudeCodeProjectTests: XCTestCase {
+
+    private func deduped() throws -> [ClaudeCodeEntry] {
+        let url = try XCTUnwrap(Bundle.module.url(
+            forResource: "claude_code_session", withExtension: "jsonl", subdirectory: "Fixtures"))
+        var seen = Set<String>()
+        return ClaudeCodeLogReader.parse(try Data(contentsOf: url))
+            .filter { seen.insert($0.dedupeKey).inserted }
+    }
+
+    func testProjectPathIsReadFromTheRecord() throws {
+        let entries = try deduped()
+        let a = try XCTUnwrap(entries.first { $0.dedupeKey.hasPrefix("msg_A") })
+        XCTAssertEqual(a.projectPath, "/Users/me/Repos/apple-dev/llm-usage-monitor")
+        XCTAssertEqual(a.gitBranch, "main")
+    }
+
+    func testProjectNameIsTheLastPathComponent() {
+        // A path whose folders contain real dashes must survive intact, which is
+        // why cwd is used rather than decoding the projects/ folder name.
+        let e = ClaudeCodeEntry(
+            dedupeKey: "k", timestamp: Date(), model: "m", sessionId: nil,
+            projectPath: "/Users/me/Repos/apple-dev/llm-usage-monitor", gitBranch: nil,
+            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0
+        )
+        XCTAssertEqual(e.projectName, "llm-usage-monitor")
+    }
+
+    func testProjectNameIsNilWhenPathIsMissing() {
+        let e = ClaudeCodeEntry(
+            dedupeKey: "k", timestamp: Date(), model: "m", sessionId: nil,
+            projectPath: nil, gitBranch: nil,
+            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0
+        )
+        XCTAssertNil(e.projectName)
+    }
+
+    func testByProjectIsSortedBusiestFirst() throws {
+        let rows = ClaudeCodeLogReader.byProject(try deduped())
+
+        XCTAssertEqual(rows.count, 2)
+        // llm-usage-monitor holds msg_A (21987) + msg_B (24785) = 46772.
+        // other-project holds msg_D (205).
+        XCTAssertEqual(rows[0].project, "llm-usage-monitor")
+        XCTAssertEqual(rows[0].totals.totalTokens, 46772)
+        XCTAssertEqual(rows[0].totals.messageCount, 2)
+        XCTAssertEqual(rows[0].path, "/Users/me/Repos/apple-dev/llm-usage-monitor")
+
+        XCTAssertEqual(rows[1].project, "other-project")
+        XCTAssertEqual(rows[1].totals.totalTokens, 205)
+    }
+
+    func testProjectTotalsMatchTheOverallTotal() throws {
+        let entries = try deduped()
+        let overall = ClaudeCodeLogReader.totals(entries).totalTokens
+        let summed = ClaudeCodeLogReader.byProject(entries).map(\.totals.totalTokens).reduce(0, +)
+        XCTAssertEqual(summed, overall, "no tokens may be lost in grouping")
+    }
+
+    func testEntriesWithoutPathAreGroupedNotDropped() {
+        let entries = [
+            ClaudeCodeEntry(dedupeKey: "1", timestamp: Date(), model: "m", sessionId: nil,
+                            projectPath: "/a/b", gitBranch: nil,
+                            inputTokens: 10, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0),
+            ClaudeCodeEntry(dedupeKey: "2", timestamp: Date(), model: "m", sessionId: nil,
+                            projectPath: nil, gitBranch: nil,
+                            inputTokens: 5, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0),
+        ]
+        let rows = ClaudeCodeLogReader.byProject(entries)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.first { $0.project == "Unknown" }?.totals.totalTokens, 5)
+        XCTAssertEqual(rows.map(\.totals.totalTokens).reduce(0, +), 15)
+    }
+
+    func testEmptyInputGivesNoRows() {
+        XCTAssertTrue(ClaudeCodeLogReader.byProject([]).isEmpty)
+    }
+}
+
+final class HourlyFoldingTests: XCTestCase {
+
+    /// Mirrors UsageViewModel.foldIntoDays; a week of hourly buckets is too
+    /// fine to draw, so runs of 24 collapse into days.
+    private func fold(_ hourly: [Int64]) -> [Int64] {
+        stride(from: 0, to: hourly.count, by: 24).map { start in
+            hourly[start..<Swift.min(start + 24, hourly.count)].reduce(0, +)
+        }
+    }
+
+    func testSevenDaysFoldsToSevenBuckets() {
+        let hourly = [Int64](repeating: 10, count: 7 * 24)
+        let days = fold(hourly)
+        XCTAssertEqual(days.count, 7)
+        XCTAssertTrue(days.allSatisfy { $0 == 240 })
+        XCTAssertEqual(days.reduce(0, +), hourly.reduce(0, +), "no tokens lost")
+    }
+
+    func testPartialFinalDayIsKept() {
+        let hourly = [Int64](repeating: 1, count: 30)
+        let days = fold(hourly)
+        XCTAssertEqual(days, [24, 6])
+    }
+
+    func testEmptyInput() {
+        XCTAssertTrue(fold([]).isEmpty)
+    }
+}

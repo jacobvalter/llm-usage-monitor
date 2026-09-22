@@ -12,11 +12,12 @@ struct ProviderState: Identifiable {
     /// Recent 5-hour readings, oldest first. Loaded from disk, so it survives a restart.
     var history: [Double] = []
 
-    /// Tokens used today, from the CLI session logs.
-    var todayTotals: TokenTotals?
-    var todayByModel: [(model: String, totals: TokenTotals)] = []
-    /// Tokens per hour for the last 12 hours, oldest first.
-    var hourlyTokens: [Int64] = []
+    /// Tokens over the selected period, from the CLI session logs.
+    var tokenTotals: TokenTotals?
+    var tokensByModel: [(model: String, totals: TokenTotals)] = []
+    var tokensByProject: [(project: String, totals: TokenTotals)] = []
+    /// Tokens per bucket over the period, oldest first. Feeds the small chart.
+    var tokenBuckets: [Int64] = []
 
     var id: String { provider.rawValue }
 
@@ -183,22 +184,41 @@ final class UsageViewModel: ObservableObject {
 
     /// Reads today's tokens from the Claude Code session logs.
     /// Parsing runs off the main actor; only the result comes back.
+    /// Re-reads the logs only. Used when the period changes, so switching
+    /// Today/7 days does not re-hit the provider APIs.
+    func reloadLocalTokens() async {
+        await refreshLocalTokens()
+    }
+
     private func refreshLocalTokens() async {
         let cache = logCache
-        let start = Calendar.current.startOfDay(for: Date())
+        let range = settings.selectedTokenRange
+        let start = range.start()
+        let hours = range.chartHours
 
-        let result = await Task.detached(priority: .utility) { () -> (TokenTotals, [(String, TokenTotals)], [Int64]) in
+        let result = await Task.detached(priority: .utility) {
+            () -> (TokenTotals, [(String, TokenTotals)], [(String, TokenTotals)], [Int64]) in
             let entries = ClaudeCodeLogReader(cache: cache).entries(since: start)
             return (
                 ClaudeCodeLogReader.totals(entries),
                 ClaudeCodeLogReader.byModel(entries).map { ($0.model, $0.totals) },
-                ClaudeCodeLogReader.hourlyTotals(entries, hours: 12)
+                ClaudeCodeLogReader.byProject(entries).map { ($0.project, $0.totals) },
+                ClaudeCodeLogReader.hourlyTotals(entries, hours: hours)
             )
         }.value
 
-        claude.todayTotals = result.0
-        claude.todayByModel = result.1.map { (model: $0.0, totals: $0.1) }
-        claude.hourlyTokens = result.2
+        claude.tokenTotals = result.0
+        claude.tokensByModel = result.1.map { (model: $0.0, totals: $0.1) }
+        claude.tokensByProject = result.2.map { (project: $0.0, totals: $0.1) }
+        // A week of hourly buckets is too fine to draw; fold it into days.
+        claude.tokenBuckets = hours > 48 ? Self.foldIntoDays(result.3) : result.3
+    }
+
+    /// Sums each run of 24 hourly buckets into one daily bucket.
+    static func foldIntoDays(_ hourly: [Int64]) -> [Int64] {
+        stride(from: 0, to: hourly.count, by: 24).map { start in
+            hourly[start..<min(start + 24, hourly.count)].reduce(0, +)
+        }
     }
 
     /// Keeps about an hour of samples at the 60s poll rate.

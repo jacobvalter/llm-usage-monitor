@@ -8,6 +8,12 @@ public struct ClaudeCodeEntry: Sendable, Equatable {
     public let timestamp: Date
     public let model: String
     public let sessionId: String?
+    /// Working directory of the session, e.g. /Users/me/Repos/thing.
+    /// Taken from the record itself; the folder name under projects/ cannot be
+    /// decoded reliably because real dashes in a path are indistinguishable
+    /// from the separators.
+    public let projectPath: String?
+    public let gitBranch: String?
     public let inputTokens: Int64
     public let outputTokens: Int64
     public let cacheReadTokens: Int64
@@ -15,6 +21,13 @@ public struct ClaudeCodeEntry: Sendable, Equatable {
 
     public var totalTokens: Int64 {
         inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens
+    }
+
+    /// Last path component, for display. nil when the record carried no cwd.
+    public var projectName: String? {
+        guard let projectPath, !projectPath.isEmpty else { return nil }
+        let name = (projectPath as NSString).lastPathComponent
+        return name.isEmpty ? nil : name
     }
 }
 
@@ -201,6 +214,8 @@ public struct ClaudeCodeLogReader: Sendable {
             timestamp: timestamp,
             model: model,
             sessionId: root["sessionId"] as? String,
+            projectPath: root["cwd"] as? String,
+            gitBranch: root["gitBranch"] as? String,
             inputTokens: int("input_tokens"),
             outputTokens: int("output_tokens"),
             cacheReadTokens: int("cache_read_input_tokens"),
@@ -224,6 +239,18 @@ public struct ClaudeCodeLogReader: Sendable {
     public static func byModel(_ entries: [ClaudeCodeEntry]) -> [(model: String, totals: TokenTotals)] {
         Dictionary(grouping: entries, by: \.model)
             .map { (model: $0.key, totals: totals($0.value)) }
+            .sorted { $0.totals.totalTokens > $1.totals.totalTokens }
+    }
+
+    /// Per-project totals, busiest first. Entries with no cwd are grouped
+    /// under "Unknown" rather than dropped, so the numbers still add up.
+    public static func byProject(
+        _ entries: [ClaudeCodeEntry]
+    ) -> [(project: String, path: String?, totals: TokenTotals)] {
+        Dictionary(grouping: entries, by: { $0.projectName ?? "Unknown" })
+            .map { name, group in
+                (project: name, path: group.first?.projectPath, totals: totals(group))
+            }
             .sorted { $0.totals.totalTokens > $1.totals.totalTokens }
     }
 

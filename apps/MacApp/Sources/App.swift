@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.action = #selector(togglePopover)
 
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(
+        let hosting = NSHostingController(
             rootView: PopoverView(
                 model: model,
                 settings: settings,
@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onQuit: { NSApp.terminate(nil) }
             )
         )
+        // Let the popover resize to whatever SwiftUI asks for.
+        hosting.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = hosting
 
         // Settings changes must repaint the menu bar and re-time the poll loop.
         settings.objectWillChange

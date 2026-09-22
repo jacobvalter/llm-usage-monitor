@@ -213,17 +213,28 @@ struct TodayTokens: View {
     let totals: TokenTotals
     let hourly: [Int64]
     let accent: Color
+    @Binding var range: String
+    var onRangeChange: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(compactTokens(totals.totalTokens))
                     .font(.system(size: 22, weight: .bold)).monospacedDigit()
-                Text("tokens today").font(.system(size: 11)).foregroundStyle(secondary)
+                Text((TokenRange(rawValue: range) ?? .today).caption)
+                    .font(.system(size: 11)).foregroundStyle(secondary)
                 Spacer()
                 Text("\(totals.messageCount) msgs")
                     .font(.system(size: 11)).monospacedDigit().foregroundStyle(secondary)
             }
+
+            Picker("", selection: $range) {
+                ForEach(TokenRange.allCases) { Text($0.label).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .onChange(of: range) { _, _ in onRangeChange() }
 
             if hourly.contains(where: { $0 > 0 }) {
                 HourlyBars(values: hourly, accent: accent).frame(height: 22)
@@ -319,11 +330,62 @@ struct QuotaBar: View {
     }
 }
 
+/// A titled list of "name ... share bar ... tokens" rows.
+struct UsageRows: View {
+    let title: String
+    let rows: [(label: String, totals: TokenTotals)]
+    let total: Int64
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.system(size: 11)).foregroundStyle(secondary)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 8) {
+                    Text(row.label)
+                        .font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    ShareBar(fraction: share(row.totals.totalTokens), accent: accent)
+                        .frame(width: 44, height: 4)
+                    Text("\(row.totals.messageCount)")
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(secondary)
+                        .frame(minWidth: 26, alignment: .trailing)
+                    Text(compactTokens(row.totals.totalTokens))
+                        .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+                        .frame(minWidth: 44, alignment: .trailing)
+                }
+            }
+        }
+    }
+
+    private func share(_ value: Int64) -> Double {
+        total > 0 ? Double(value) / Double(total) : 0
+    }
+}
+
+private struct ShareBar: View {
+    let fraction: Double
+    let accent: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.10))
+                Capsule().fill(accent.opacity(0.85))
+                    .frame(width: max(1, geo.size.width * fraction))
+            }
+        }
+    }
+}
+
 // MARK: - Provider card
 
 struct ProviderCard: View {
     let state: ProviderState
     var thresholds: LevelThresholds = .standard
+    var rangeBinding: Binding<String>? = nil
+    var onRangeChange: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -356,8 +418,9 @@ struct ProviderCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let totals = state.todayTotals, totals.messageCount > 0 {
-                TodayTokens(totals: totals, hourly: state.hourlyTokens, accent: state.accent)
+            if let totals = state.tokenTotals, totals.messageCount > 0, let rangeBinding {
+                TodayTokens(totals: totals, hourly: state.tokenBuckets, accent: state.accent,
+                            range: rangeBinding, onRangeChange: onRangeChange)
                 Divider().overlay(hairline)
             }
 
@@ -385,21 +448,28 @@ struct ProviderCard: View {
                     }
                 }
 
-                if !state.todayByModel.isEmpty {
+                if !state.tokensByProject.isEmpty {
                     Divider().overlay(hairline)
-                    Text("Tokens today by model").font(.system(size: 11)).foregroundStyle(secondary)
-                    ForEach(Array(state.todayByModel.prefix(4).enumerated()), id: \.offset) { _, row in
-                        HStack {
-                            Text(row.model).font(.system(size: 12)).foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(1).truncationMode(.middle)
-                            Spacer(minLength: 8)
-                            Text("\(row.totals.messageCount)")
-                                .font(.system(size: 11)).monospacedDigit().foregroundStyle(secondary)
-                            Text(compactTokens(row.totals.totalTokens))
-                                .font(.system(size: 12, weight: .semibold)).monospacedDigit()
-                                .frame(minWidth: 44, alignment: .trailing)
-                        }
-                    }
+                    UsageRows(
+                        title: "Tokens by project",
+                        rows: state.tokensByProject.prefix(5).map {
+                            (label: $0.project, totals: $0.totals)
+                        },
+                        total: state.tokenTotals?.totalTokens ?? 0,
+                        accent: state.accent
+                    )
+                }
+
+                if !state.tokensByModel.isEmpty {
+                    Divider().overlay(hairline)
+                    UsageRows(
+                        title: "Tokens by model",
+                        rows: state.tokensByModel.prefix(4).map {
+                            (label: $0.model, totals: $0.totals)
+                        },
+                        total: state.tokenTotals?.totalTokens ?? 0,
+                        accent: state.accent
+                    )
                 }
 
                 if !snap.breakdown.isEmpty {
@@ -428,7 +498,34 @@ struct PopoverView: View {
         return s < 60 ? "\(s)s ago" : "\(s / 60)m ago"
     }
 
+    /// A scroll view has no natural height, so the popover would pick an
+    /// arbitrary small one. Measure the content and ask for exactly that,
+    /// capped to what fits on screen.
+    @State private var contentHeight: CGFloat = 320
+
+    private var maxHeight: CGFloat {
+        let visible = NSScreen.main?.visibleFrame.height ?? 900
+        return max(320, visible - 120)
+    }
+
     var body: some View {
+        ScrollView(.vertical) {
+            content
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: ContentHeightKey.self, value: geo.size.height)
+                    }
+                )
+        }
+        .onPreferenceChange(ContentHeightKey.self) { height in
+            if height > 0 { contentHeight = height }
+        }
+        .frame(width: 340, height: min(contentHeight, maxHeight))
+        .background(GlassBackdrop())
+        .preferredColorScheme(.dark)
+    }
+
+    private var content: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Text("LLM Usage").font(.system(size: 15, weight: .bold))
@@ -443,7 +540,15 @@ struct PopoverView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .card()
             } else {
-                ForEach(model.providers) { ProviderCard(state: $0, thresholds: settings.thresholds) }
+                ForEach(model.providers) { provider in
+                    ProviderCard(
+                        state: provider,
+                        thresholds: settings.thresholds,
+                        // Only Claude has local logs, so only it gets the period picker.
+                        rangeBinding: provider.provider == .anthropic ? $settings.tokenRange : nil,
+                        onRangeChange: { Task { await model.reloadLocalTokens() } }
+                    )
+                }
             }
 
             HStack(spacing: 12) {
@@ -463,8 +568,13 @@ struct PopoverView: View {
             .padding(.top, 1)
         }
         .padding(14)
-        .frame(width: 340)
-        .background(GlassBackdrop())
-        .preferredColorScheme(.dark)
+    }
+}
+
+
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
